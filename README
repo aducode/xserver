@@ -36,3 +36,710 @@ For more information on the git code manager, see:
 
         http://wiki.x.org/wiki/GitPage
 
+========================================================================
+    X Server 
+                                    November 27, 2006 
+Contents 
+1 引言                                                                                               2 
+   1.1 X系统基本概念 . . .        . . . . . . . . . .  . . . . . . . . . . . . . . . . . . . . . . . . .  2 
+   1.2 X系统软件体系结构            . . . . . . . . . .  . . . . . . . . . . . . . . . . . . . . . . . . .  3 
+   1.3 准备源码 . . . . . .     . . . . . . . . . .  . . . . . . . . . . . . . . . . . . . . . . . . .  3 
+   1.4 源码目录结构 . . . .       . . . . . . . . . .  . . . . . . . . . . . . . . . . . . . . . . . . .  3 
+2 XServer代码框架                                                                                      3 
+   2.1 八类资源 . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .       4 
+3 DIX层                                                                                             6 
+   3.1 初始化1 . . . . . . . .   . . . . . . . . .  . . . . . . . . . . . . . . . . . . . . . . . . .  8 
+       3.1.1 InitOutput . .   . . . . . . . . .  . . . . . . . . . . . . . . . . . . . . . . . . . 10 
+       3.1.2 InitExtensions   . . . . . . . . .  . . . . . . . . . . . . . . . . . . . . . . . . . 14 
+       3.1.3 InitInput . . .  . . . . . . . . .  . . . . . . . . . . . . . . . . . . . . . . . . . 14 
+   3.2 初始化2 . . . . . . . .   . . . . . . . . .  . . . . . . . . . . . . . . . . . . . . . . . . . 15 
+   3.3 Dispatch事件循环 . . .     . . . . . . . . .  . . . . . . . . . . . . . . . . . . . . . . . . . 15 
+4 OS 层                                                                                            15 
+   4.1 调度和请求交付 . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .         15 
+5 DDX 层                                                                                           16 
+   5.1 输入 . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .  16 
+   5.2 输入初始化 . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .       17 
+                                                1 
+      引言 
+1 
+在这一章中，我们将看看X的基本图景：X的基本概念和基本结构。考虑到这是一篇关于X源码的 
+文档，因此，这里不会给出太多的细节，并且我们会结合代码来考察这一基本图景。 
+       X系统基本概念 
+1.1 
+X是一个复杂的系统，但是它所基于的基本概念却简单易懂: 
+    ? Displays和Screens: 显示系统和屏幕 
+    ? Server-Clinet Model: 服务器-客户端模型 
+    ? Window Management: 窗口管理 
+    ? Events: 事件 
+    ? X Extensions: X扩展 
+显示系统和屏幕 
+在X系统中，显示系统被定义为由一个键盘、一个鼠标、一个或多个屏幕组成的工作站。 
+服务器-客户端模型 
+X是面向网络的窗口系统，一个应用程序不需要在实际完成显示的工作站上运行，它可以作为客 
+户端运行在远程机器上，X服务器运行于本地, 控制程序的显示并获得用户的输入，两者间的交互 
+通过相应的协议在网络上传输。客户端运行于远程，服务器运行于本地，这是与普通的服务器-客 
+户端模型的重要区别。 
+控制显示的程序被称为一个服务器(server), 它需要完成的工作包括: 
+   1. 控制显示系统，允许多个客户程序的访问。 
+   2. 把用户输入传递给相应的客户。 
+   3. 解释并执行来自客户的请求。 
+   4. 维护复杂的数据结构。 
+窗口管理 
+在X系 统 中 ， 一 个 应 用 程 序 并 不 实 际 控 制 窗 口 在 哪 里 显 示 、 大 小 是 多 少 等 等 事 情 。 由 于 多 个 
+客户的存在，一个客户不能依靠于特定的窗口配置，它只能告诉它所希望的显示的位置和 
+大 小 。 屏 幕 的 布 局 以 及 用 户 的 交 互 方 式 由 一 个 单 独 的 程 序 控 制 ， 称 之 为 窗 口 管 理 器(window 
+manager)。 
+窗口管理器实际上也是使用了Xlib编写的一个应用程序，不过它被赋予了特殊的权限，以便管理 
+屏幕上窗口布局。 
+                                       2 
+事件 
+X扩展 
+X系统是可扩展的，它定义了一套扩展、与扩展交互的机制。并不是每个服务器都支持所有的扩 
+展，所以应用程序在使用一个扩展的时候，必须首先询问服务器是否提供该扩展。 
+         X系统软件体系结构 
+1.2 
+         准备源码 
+1.3 
+可以到Xorg站点参考源码的下载和编译方法: 
+                        http://wiki.x.org/wiki/ModularDevelopersGuide 
+欢迎把编译中遇到的问题放到版上1 讨论。并将讨论的结果加入到这篇文档中来。 
+推荐使用kscope阅读源码，它依赖于cscop e, dot, ctags三个程序。 
+         源码目录结构 
+1.4 
+app 这个目录下包含一些X应用程序，包括twm这个最简单的窗口管理器。有兴趣的可以看看。 
+do c 这个目录下包含的文档包括X协议规范，X部分模块(比如安全模块)等的设计文档，但是缺 
+       乏对Xserver整体设计的描述。(待补充)。另外，Xlib的参考手册可以在 
+                                            xorg-docs/hardcopy/X11 
+       下找到。 
+xserver 这个目录下包含xserver的源代码，这将在下面具体分析。 
+       XServer代码框架 
+2 
+xserver目录下包含多个X服务器的源码，包括Xorg, Xnest和基于kdrive的多个服务器。 
+X服务器的代码分为四个部分组织： 
+    ? 设备无关层(DIX), 这一部分的代码被所有Xserver的实现共享。 
+    ? 操作系统层(OS), 这一部分的代码随着操作系统的不同而不同，但是被这个操作系统上的图 
+       形设备共享。 
+    ? 设备相关层(DDX), 这一部分随着操作系统和图形设备的组合的不同而不同。 
+    ? 扩展接口，这一部分为用统一的方式向X server加入新的功能提供支持。 
+DDX层有如下的八类资源 
+    ? Window 
+    ? Pixmap 
+    ? Screen 
+    ? Device 
+    ? Colormap 
+    ? Font 
+   1 http://www.newsmth.org/bbsdoc.php?board=THOSS 
+                                                   3 
+    ? Cursor 
+    ? Graphics Contexts 
+每种资源用相应的struct表示，并包含三个部分： 
+    ? 属性段，用于保存相应的信息。 
+    ? 函数指针 
+    ? 私有字段，DDX代码用来保存似有数据。 
+这 些 结 构 定 义 在 有 对 应 名 称 的 两 个.h文 件 内 ， 比 如screen对 应 于screenint.h和scrnintstr.h这 
+两个文件。screenint.h定义外部使用时需要的结构和函数原型，但不暴露内部的实现，scrnintstr.h 
+中定义了内部实现用的数据结构。 
+DIX通过调用结构的函数指针来完成它的工作。这些指针由DDX直接或间接的设定。属性段一般 
+由DIX层设定，DDX一般不能修改它们。 
+DIX代码放置在dix/目录下，保括 
+       main.c window.c colormap.c, dispatch.c, events.c ... 
+每个X概念，基本上都有一个对应的实现文件，方便了单个单个文件的阅读。 
+服务器相关部分的代码放置在hw/目录下。其中，hw/xfree86/目录下包含了Xorg的代码; hw/kdrive下 
+保 括 了 基 于kdrive的 多 个 服 务 器 。 由 于 基 于kdrive的 服 务 器 比 较 的 简 单 ， 我 们 将 从 其 中 的 一 个 服 
+务 器Xephyr入 手 。 关 于 这 个 服 务 器 的 说 明 ， 可 以 参 见hw/kdrive/ephyr/README, 这 里 引 用 一 部 
+分: 
+       Xephyr is a a kdrive server that outputs to a window on a pre-existing ’host’ X display. 
+       Think Xnest but with support for modern extensions like composite, damage and randr. 
+       Unlike Xnest which is an X proxy, i.e. limited to the capabilities of the host X server, 
+       Xephyr is a real X server which uses the host X server window as "framebu?er" via 
+       fast SHM XImages. 
+       It also has support for ’visually’ debugging what the server is painting. 
+kdrive的介绍可以参见相应的man文件,hw/kdrive/Xkdrive.man: 
+      man ./Xdrive.man 
+不过都是些用户文档，并没有相应的设计文档介绍基于kdrive的服务器编写方法。 
+         八类资源 
+2.1 
+下面我们通过展示相应的数据结构来搞清楚八种资源是如何在X系统中维护。 
+Screen 
+X支持一个显示系统包含多个屏幕。处理屏幕所需要的数据信息被包含在ScreenRec 中(xserver/- 
+include/scrnintstr.h): 
+typedef struct _Screen { 
+      int                      myNum; /* index of this instance in Screens[] */ 
+      ATOM                     id; 
+      short                    width, height; 
+      short                    mmWidth, mmHeight; 
+      short                    numDepths; 
+      unsigned char            rootDepth; 
+                                                  4 
+     DepthPtr            allowedDepths; 
+     unsigned long       rootVisual; 
+     unsigned long       defColormap; 
+     ... 
+     /* anybody can get a piece of this array */ 
+     DevUnion    *devPrivates; 
+     ... 
+     /* Random screen procedures */ 
+     CloseScreenProcPtr       CloseScreen; 
+     ... 
+     /* Window Procedures */ 
+     /* Pixmap procedures */ 
+     /* Font procedures */ 
+     /* Cursor Procedures */ 
+     ... 
+} ScreenRec; 
+如前面所介绍的，Screen对应的结构包含三个部分： 
+    ? 属性段: 保存信息。 
+    ? 函数指针: 指向完成相应的操作所用的例程，由DDX代码设定。 
+    ? 私有字段，DDX代码用来保存私有数据。 
+全局变量screenInfo保存了指向所有ScreenRec的指针数组: 
+typedef struct _ScreenInfo { 
+     int         imageByteOrder; 
+     int         bitmapScanlineUnit; 
+     int         bitmapScanlinePad; 
+     int         bitmapBitOrder; 
+     int         numPixmapFormats; 
+     PixmapFormatRec 
+                 formats[MAXFORMATS]; 
+     int         arraySize; 
+     int         numScreens; 
+     ScreenPtr   screens[MAXSCREENS]; 
+     int         numVideoScreens; 
+} ScreenInfo; 
+extern ScreenInfo screenInfo; 
+同时，screenInfo也保存了诸如bitmap的bit-order等的全局配置。 
+                                          5 
+Device 
+Window 
+Colormap 
+Graphics Contexts 
+Pixmap 
+Font 
+Cursor 
+       DIX层 
+3 
+DIX层的核心是一个dispatch循环。我们先从main函数出发，它定义在dix/main.c中： 
+int 
+main(int argc, char *argv[], char *envp[]) 
+{ 
+      int         i, j, k, error; 
+      char        *xauthfile; 
+      HWEventQueueType alwaysCheckForInput[2]; 
+      display = "0"; 
+      InitGlobals(); 
+      CheckUserParameters(argc, argv, envp); 
+      CheckUserAuthorization(); 
+      InitConnectionLimits(); 
+      ... 
+} 
+我们先来分析InitGlobals()函数，它定义在os/util.c中： 
+      void InitGlobals(void) 
+      { 
+          ddxInitGlobals(); 
+      } 
+kdrive中对这个函数提供了一个空实现(hw/kdrive/src/kdrive.c)： 
+      void ddxInitGlobals(void) { /* THANK YOU XPRINT */ } 
+接下来我们看看InitConnectionLimits()函数, 它定义于os/connection.c, 由于是os相关，实际 
+的函数含有许多的宏，简化如下: 
+/* Set MaxClients and lastfdesc, and allocate ConnectionTranslation */ 
+void 
+InitConnectionLimits(void) 
+{ 
+      lastfdesc = -1; 
+      lastfdesc = sysconf(_SC_OPEN_MAX) - 1; 
+      /* This is the fallback */ 
+                                          6 
+     if (lastfdesc < 0) 
+          lastfdesc = MAXSOCKS; 
+     if (lastfdesc > MAXSELECT) 
+          lastfdesc = MAXSELECT; 
+     if (lastfdesc > MAXCLIENTS) 
+     { 
+          lastfdesc = MAXCLIENTS; 
+     } 
+     MaxClients = lastfdesc; 
+#if !defined(WIN32) 
+     ConnectionTranslation = (int *)xnfalloc(sizeof(int)*(lastfdesc + 1)); 
+#else 
+     InitConnectionTranslation(); 
+#endif 
+} 
+ConnectionTranslation在同一文件中定义为： 
+     int *ConnectionTranslation = NULL; 
+另外，该文件定义如下的宏： 
+     #undef MAXSOCKS 
+     #define MAXSOCKS 500 
+     #undef MAXSELECT 
+     #define MAXSELECT 500 
+     #define MAXFD 500 
+接下去的main代码如下： 
+     /* These are needed by some routines which are called from interrupt 
+       * handlers, thus have no direct calling path back to main and thus 
+       * can’t be passed argc, argv as parameters */ 
+     argcGlobal = argc; 
+     argvGlobal = argv; 
+     /* prep X authority file from environment; this can be overriden by a 
+       * command line option */ 
+     xauthfile = getenv("XAUTHORITY"); 
+     if (xauthfile) InitAuthorization (xauthfile); 
+     ProcessCommandLine(argc, argv); 
+     alwaysCheckForInput[0] = 0; 
+     alwaysCheckForInput[1] = 1; 
+先不做过多解释。再看接下去的代码： 
+main 
+{ 
+     ... 
+     while(1) 
+     { 
+          serverGeneration++; 
+          ScreenSaverTime = defaultScreenSaverTime; 
+          ScreenSaverInterval = defaultScreenSaverInterval; 
+                                          7 
+         ScreenSaverBlanking = defaultScreenSaverBlanking; 
+         ScreenSaverAllowExposures = defaultScreenSaverAllowExposures; 
+         InitBlockAndWakeupHandlers(); 
+         ... 
+         Dispatch(); 
+         ... 
+         xfree(ConnectionInfo); 
+         ConnectionInfo = NULL; 
+     } 
+     return(0); 
+} 
+main函数进入一个大循环，这个循环的第一步是完成初始化工作，第二部是进入Dispatch() 事 
+件处理循环，第三步是释放所有的资源。这个大循环的退出即意味着main函数的退出。下面我们 
+一步步的分析初始化过程。 
+       初始化1 
+3.1 
+先看while循环中代码中的第一部分： 
+         serverGeneration++; 
+         ScreenSaverTime = defaultScreenSaverTime; 
+         ScreenSaverInterval = defaultScreenSaverInterval; 
+         ScreenSaverBlanking = defaultScreenSaverBlanking; 
+         ScreenSaverAllowExposures = defaultScreenSaverAllowExposures; 
+         InitBlockAndWakeupHandlers(); 
+         /* Perform any operating system dependent initializations you’d like */ 
+         OsInit(); 
+         if(serverGeneration == 1) 
+         { 
+         CreateWellKnownSockets(); 
+             InitProcVectors(); 
+             clients = (ClientPtr *)xalloc(MAXCLIENTS * sizeof(ClientPtr)); 
+             if (!clients) 
+                 FatalError("couldn’t create client array"); 
+             for (i=1; i<MAXCLIENTS; i++) 
+                 clients[i] = NullClient; 
+             serverClient = (ClientPtr)xalloc(sizeof(ClientRec)); 
+             if (!serverClient) 
+                 FatalError("couldn’t create server client"); 
+             InitClient(serverClient, 0, (pointer)NULL); 
+         } 
+         else 
+             ResetWellKnownSockets (); 
+         clients[0] = serverClient; 
+         currentMaxClients = 1; 
+         if (!InitClientResources(serverClient))      /* for root resources */ 
+             FatalError("couldn’t init server resources"); 
+开头的代码和屏幕保护有关，我们以后会在其他的文档中分析。InitBlockAndWakeupHandlers() 
+在dis/dixutils.c中定义： 
+                                         8 
+     void 
+     InitBlockAndWakeupHandlers () 
+     { 
+         xfree (handlers); 
+         handlers = (BlockHandlerPtr) 0; 
+         numHandlers = 0; 
+         sizeHandlers = 0; 
+     } 
+BlockHandler用于什么我们暂时还不知道。OsInit()定义于os/osinit.c, 与os相关的部分我们暂 
+不分析。如果是第一次创建服务起，那么首先创建熟知的端口，接下去初始化过程向量，过程向 
+量与事件循环有关，先看看它的大致模样(dix/tables): 
+_X_EXPORT int (* ProcVector[256]) ( 
+         ClientPtr /* client */ 
+     )= 
+{ 
+     ProcBadRequest, 
+     ProcCreateWindow, 
+     ProcChangeWindowAttributes, 
+     ProcGetWindowAttributes, 
+     ProcDestroyWindow, 
+     ProcDestroySubwindows,/* 5 */ 
+     ProcChangeSaveSet, 
+     .... 
+} 
+先不对它加以分析。回到while循环，它下一步设置client数组，并初始化第一个client，它将作为 
+根窗口。ClientRec定义在include/dixstruct.h中。 
+接下去看 
+         SetInputCheck(&alwaysCheckForInput[0], &alwaysCheckForInput[1]); 
+         screenInfo.arraySize = MAXSCREENS; 
+         screenInfo.numScreens = 0; 
+         screenInfo.numVideoScreens = -1; 
+         WindowTable = (WindowPtr *)xalloc(MAXSCREENS * sizeof(WindowPtr)); 
+         if (!WindowTable) 
+             FatalError("couldn’t create root window table"); 
+         /* 
+          * Just in case the ddx doesnt supply a format for depth 1 (like qvss). 
+          */ 
+         j = indexForBitsPerPixel[ 1 ]; 
+         k = indexForScanlinePad[ BITMAP_SCANLINE_PAD ]; 
+         PixmapWidthPaddingInfo[1].padRoundUp = BITMAP_SCANLINE_PAD-1; 
+         PixmapWidthPaddingInfo[1].padPixelsLog2 = answer[j][k]; 
+         j = indexForBitsPerPixel[8]; /* bits per byte */ 
+         PixmapWidthPaddingInfo[1].padBytesLog2 = answer[j][k]; 
+         PixmapWidthPaddingInfo[1].bitsPerPixel = 1; 
+         InitAtoms(); 
+         InitEvents(); 
+         InitGlyphCaching(); 
+         ResetExtensionPrivates(); 
+         ResetClientPrivates(); 
+                                         9 
+           ResetScreenPrivates(); 
+           ResetWindowPrivates(); 
+           ResetGCPrivates(); 
+           ResetColormapPrivates(); 
+           ResetFontPrivateIndex(); 
+           ResetDevicePrivateIndex(); 
+           InitCallbackManager(); 
+           InitVisualWrap(); 
+SetInputCheck函数的作用在下面的章节中分析，其余的初始化过程主要涉及DIX层，这里先不 
+做进一步的分析。接下去的代码涉及输入输出的处理： 
+           InitOutput(&screenInfo, argc, argv); 
+           InitExtensions(argc, argv); 
+           if (!InitClientPrivates(serverClient)) 
+               FatalError("failed to allocate serverClient devprivates"); 
+           for (i = 0; i < screenInfo.numScreens; i++) 
+           { 
+               ScreenPtr pScreen = screenInfo.screens[i]; 
+               if (!CreateScratchPixmapsForScreen(i)) 
+                   FatalError("failed to create scratch pixmaps"); 
+               if (pScreen->CreateScreenResources && 
+                   !(*pScreen->CreateScreenResources)(pScreen)) 
+                   FatalError("failed to create screen resources"); 
+               if (!CreateGCperDepth(i)) 
+                   FatalError("failed to create scratch GCs"); 
+               if (!CreateDefaultStipple(i)) 
+                   FatalError("failed to create default stipple"); 
+               if (!CreateRootWindow(pScreen)) 
+                   FatalError("failed to create root window"); 
+           } 
+           InitInput(argc, argv); 
+           if (InitAndStartDevices() != Success) 
+               FatalError("failed to initialize core devices"); 
+screenInfo在dix/globals.c中定义： 
+      _X_EXPORT ScreenInfo screenInfo; 
+InitOutput在hw/kdrive/ephyr/ephyrinit.c中定义： 
+      void 
+      InitOutput (ScreenInfo *pScreenInfo, int argc, char **argv) 
+      { 
+           KdInitOutput (pScreenInfo, argc, argv); 
+      } 
+3.1.1   InitOutput 
+KdInitOutput定义于kdrive.c: 
+void 
+KdInitOutput (ScreenInfo       *pScreenInfo, 
+                   int     argc, 
+                   char       **argv) 
+{ 
+                                           10 
+     KdCardInfo      *card; 
+     KdScreenInfo     *screen; 
+     if (!kdCardInfo) 
+     { 
+         InitCard (0); 
+         if (!(card = KdCardInfoLast ())) 
+             FatalError("No matching cards found!\n"); 
+         screen = KdScreenInfoAdd (card); 
+         KdParseScreen (screen, 0); 
+     } 
+     /* 
+      * Initialize all of the screens for all of the cards 
+      */ 
+     for (card = kdCardInfo; card; card = card->next) 
+     { 
+         int ret=1; 
+         if(card->cfuncs->cardinit) 
+             ret=(*card->cfuncs->cardinit) (card); 
+         if (ret) 
+         { 
+              for (screen = card->screenList; screen; screen = screen->next) 
+                  KdInitScreen (pScreenInfo, screen, argc, argv); 
+         } 
+     } 
+     /* 
+      * Merge the various pixmap formats together, this can fail 
+      * when two screens share depth but not bitsPerPixel 
+      */ 
+     if (!KdSetPixmapFormats (pScreenInfo)) 
+         return; 
+     /* 
+      * Add all of the screens 
+      */ 
+     for (card = kdCardInfo; card; card = card->next) 
+         for (screen = card->screenList; screen; screen = screen->next) 
+             KdAddScreen (pScreenInfo, screen, argc, argv); 
+} 
+InitCard函数在ephyrinit.c中定义： 
+     void 
+     InitCard (char *name) 
+     { 
+         KdCardAttr attr; 
+         EPHYR_DBG("mark"); 
+         KdCardInfoAdd (&ephyrFuncs, &attr, 0); 
+     } 
+ephyr的代码和kdrive的代码混杂在一起，不过还是可以理清楚的。我们先看看ephyrFuncs: 
+KdCardFuncs ephyrFuncs = { 
+     ephyrCardInit,            /* cardinit */ 
+     ephyrScreenInit,          /* scrinit */ 
+                                          11 
+     ephyrInitScreen,         /* initScreen */ 
+     ephyrFinishInitScreen,   /* finishInitScreen */ 
+     ephyrCreateResources,    /* createRes */ 
+     ephyrPreserve,           /* preserve */ 
+     ephyrEnable,             /* enable */ 
+     ephyrDPMS,               /* dpms */ 
+     ephyrDisable,            /* disable */ 
+     ephyrRestore,            /* restore */ 
+     ephyrScreenFini,         /* scrfini */ 
+     ephyrCardFini,           /* cardfini */ 
+     0,                       /* initCursor */ 
+     0,                       /* enableCursor */ 
+     0,                       /* disableCursor */ 
+     0,                       /* finiCursor */ 
+     0,                       /* recolorCursor */ 
+     0,                       /* initAccel */ 
+     0,                       /* enableAccel */ 
+     0,                       /* disableAccel */ 
+     0,                       /* finiAccel */ 
+     ephyrGetColors,          /* getColors */ 
+     ephyrPutColors,          /* putColors */ 
+}; 
+可 以 看 出 ，ephyr通 过 向kdrive注 册 一 系 列 的 函 数 来 实 现 它 们 的 交 互 。KdCardInfoAdd添 加 了 新 
+的Card信息。之后是添加screen信息，KdScreenInfoAdd (card)。 
+接下去分析kdInitOutput的代码: 
+     /* 
+      * Initialize all of the screens for all of the cards 
+      */ 
+     for (card = kdCardInfo; card; card = card->next) 
+     { 
+         int ret=1; 
+         if(card->cfuncs->cardinit) 
+             ret=(*card->cfuncs->cardinit) (card); 
+         if (ret) 
+         { 
+             for (screen = card->screenList; screen; screen = screen->next) 
+                  KdInitScreen (pScreenInfo, screen, argc, argv); 
+         } 
+     } 
+(*card->cfuncs->cardinit) (card)调用了以下的函数: 
+Bool 
+ephyrCardInit (KdCardInfo *card) 
+{ 
+   EphyrPriv *priv; 
+   priv = (EphyrPriv *) xalloc (sizeof (EphyrPriv)); 
+   if (!priv) 
+     return FALSE; 
+                                         12 
+   if (!ephyrInitialize (card, priv)) 
+     { 
+       xfree (priv); 
+       return FALSE; 
+     } 
+   card->driver = priv; 
+   return TRUE; 
+} 
+由于返回值为TRUE, KdInitScreen被调用: 
+void 
+KdInitScreen (ScreenInfo     *pScreenInfo, 
+                KdScreenInfo *screen, 
+                int           argc, 
+                char        **argv) 
+{ 
+     KdCardInfo *card = screen->card; 
+     (*card->cfuncs->scrinit) (screen); 
+     if (!card->cfuncs->initAccel) 
+         screen->dumb = TRUE; 
+     if (!card->cfuncs->initCursor) 
+         screen->softCursor = TRUE; 
+} 
+看看ephyrScreenInit: 
+Bool 
+ephyrScreenInit (KdScreenInfo *screen) 
+{ 
+   EphyrScrPriv *scrpriv; 
+   scrpriv = xalloc (sizeof (EphyrScrPriv)); 
+   if (!scrpriv) 
+     return FALSE; 
+   memset (scrpriv, 0, sizeof (EphyrScrPriv)); 
+   screen->driver = scrpriv; 
+   if (!ephyrScreenInitialize (screen, scrpriv)) 
+     { 
+       screen->driver = 0; 
+       xfree (scrpriv); 
+       return FALSE; 
+     } 
+   return TRUE; 
+} 
+ephyrScreenInitialize函数比较长，我们知道Xephyr类似于Xnest, 这个函数在另一个X server上 
+建立一个窗口，并将它当作屏幕。 
+                                         13 
+下面为剩下的kdInitOutput的代码: 
+      /* 
+       * Merge the various pixmap formats together, this can fail 
+       * when two screens share depth but not bitsPerPixel 
+       */ 
+      if (!KdSetPixmapFormats (pScreenInfo)) 
+          return; 
+      /* 
+       * Add all of the screens 
+       */ 
+      for (card = kdCardInfo; card; card = card->next) 
+          for (screen = card->screenList; screen; screen = screen->next) 
+               KdAddScreen (pScreenInfo, screen, argc, argv); 
+3.1.2   InitExtensions 
+InitExtensions()在mi/miinitext.c中定义，定义了两个版本，通过宏来选择，下面简要的展 
+示其中的一个定义： 
+#ifndef XFree86LOADER 
+/*ARGSUSED*/ 
+void 
+InitExtensions(argc, argv) 
+      int          argc; 
+      char         *argv[]; 
+{ 
+#ifdef XCSECURITY 
+      SecurityExtensionSetup(); 
+#endif 
+      ... 
+#ifdef DMXEXT 
+      DMXExtensionInit(); /* server-specific extension, cannot be disabled */ 
+#endif 
+#ifdef XEVIE 
+      if (!noXevieExtension) XevieExtensionInit(); 
+#endif 
+#ifdef COMPOSITE 
+      if (!noCompositeExtension) CompositeExtensionInit(); 
+#endif 
+#ifdef DAMAGE 
+      if (!noDamageExtension) DamageExtensionInit(); 
+#endif 
+} 
+在这里我们看到实现3D桌面效果必须的DamageExtension、CompositeExtension 两个扩展的初 
+始化位置。 
+3.1.3   InitInput 
+InitInput()定义于ephyrinit.c: 
+                                          14 
+     void 
+     InitInput (int argc, char **argv) 
+     { 
+         KdInitInput (&EphyrMouseFuncs, &EphyrKeyboardFuncs); 
+     } 
+KdInitInput的分析见后面的章节。 
+       初始化2 
+3.2 
+main函数接下去的代码主要是字体的初始化： 
+         InitFonts(); 
+         if (loadableFonts) { 
+             SetFontPath(0, 0, (unsigned char *)defaultFontPath, &error); 
+         } else { 
+            if (SetDefaultFontPath(defaultFontPath) != Success) 
+                 ErrorF("failed to set default font path ’%s’", 
+                      defaultFontPath); 
+         } 
+         if (!SetDefaultFont(defaultTextFont)) 
+             FatalError("could not open default font ’%s’", defaultTextFont); 
+         if (!(rootCursor = CreateRootCursor(defaultCursorFont, 0))) 
+             FatalError("could not open default cursor font ’%s’", 
+                defaultCursorFont); 
+         for (i = 0; i < screenInfo.numScreens; i++) 
+             InitRootWindow(WindowTable[i]); 
+         DefineInitialRootWindow(WindowTable[0]); 
+         SaveScreens(SCREEN_SAVER_FORCER, ScreenSaverReset); 
+         if (!CreateConnectionBlock()) 
+             FatalError("could not create connection block info"); 
+         } 
+再接下去就到了Dispatch()事件循环。 
+       Dispatch事件循环 
+3.3 
+      OS 层 
+4 
+OS层负责管理客户的连接和调度工作，同时它也提供了字体文件，字体名和文件名的翻译，另 
+外，它还提供了底层的内存管理。 
+定义于os/osinit.c的OsInit()函数负责完成OS相关的初始化工作。 
+     OsInit (); 
+       调度和请求交付 
+4.1 
+DIX的主事件循环营造了不同窗口间多任务的假象，实际上服务器是单进程的。事件循环把对每 
+个客户端的工作分解成多个部分。不同客户的事件和请求互相交叉，所以真正的多任务是没有必 
+要的。 
+                                        15 
+WaitForSomething()函数阻塞服务器进程直到下面的事之一发生： 
+    ? 用户或硬件触发了一个输入事件(参考SetInputCheck()). 
+    ? 有未被处理的请求 
+    ? 有新的客户连接请求 
+在WaitForSomething()开 始 调 用select, poll或 其 他 类 似 的 功 能 之 前 ， 它 必 须 检 查 在 工 作 队 列 
+上是否有东西，如果有，它必须调用DIX层的ProcessWorkQueue()过程。如果WaitForSomething()决 
+定它要做一些可能会导致度阻塞的事情(在select或poll前)，它必须调用DIX的BlockHandler()。 
+      DDX 层 
+5 
+DDX层 大 部 分 的 工 作 都 在 前 面 提 过 的 函 数 指 针 所 指 向 的 函 数 中 完 成, 它 们 大 部 分 和 图 形 显 示 相 
+关，其余的和处理用户从输入设备的输入。下面结合Xephyr分析DDX层。 
+       输入 
+5.1 
+DIX在一个叫做InputInfo的中央数据结构中保存全局的设备目录。对每个设备，都有一个对应的 
+设备结构DeviceRec. DIX能够通过InputInfo定位每一个DeviceRec。另外，它有一个特殊的指针 
+标明主鼠标设备，另一个特殊的指针标明主键盘。 
+输入设备结构DeviceRec(Xserver/include/input.h)是一个设备无关的结构，保存了输入设备的状 
+态。DevicePtr是指向DeviceRec的指针。 
+一 个xEvent描 述 了 服 务 器 向 客 户 报 告 的 一 个 事 件 ， 在Xproto.h中 定 义 ， 它 是 一 个 巨 大 的 数 据 结 
+构，并且有一个struct的union，用于表示各种事件。 
+DDX主要的输入函数接口是 
+     void ProcessInputEvents() 
+当有逗留的输入时, DIX会调用这个函数，在没有逗留的输入时，DIX 也可能调用这个函数。我 
+们必须完成这个函数，从每个设备得到输入事件，并把它交付给DIX, 交付的过程通过调用一下的 
+函数： 
+     void DevicePtr->processInputProc(xEventPtr pEvent, 
+         DeviceIntPtr device, int count); 
+在ProcessInputEvents()第 一 次 被 调 用 的 时 候 ，DIX会 填 充 这 个 函 数 指 针 指 向 它 自 己 的 过 程 。 有 
+多 少 输 入 事 件 就 掉 用 多 少 次 这 个 函 数 ，DIX会 把 这 些 事 件 缓 存 起 来 ， 并 在 必 要 的 时 候 发 送 出 
+去。 
+举 个 例 子 ， 我 们 的ProcessInputEvents()过 程 可 能 检 查 鼠 标 和 键 盘 。 如 果 键 盘 有 多 个 击 键 在 队 列 
+中，那我们需要多次的调用键盘的processInputProc直到把队列清空。 
+在服务器的主事件循环中，每当WaitForSomething()返回的时候，DIX都要检查下是否有逗留的 
+输入，如果有，DIX调用DDX的ProcessInputEvents()。 
+检查的过程必须非常的快，它仅仅比较两个指针的内容，我们必须传给DIX要比较的指针。这通 
+过下面的函数完成： 
+     void SetInputCheck(long *p1, long *p2); 
+我们必须在初始化的时候调用这个函数。 
+                                         16 
+        输入初始化 
+5.2 
+输入的初始化从InitInput()函数开始，它的原型如下： 
+      void InitInput (int argc, char **argv); 
+在ephyr代码中，这一函数实现在文件ephyrinit.c中，它通过调用KdInitInput() 完成： 
+      void 
+      InitInput (int argc, char **argv) 
+      { 
+          KdInitInput (&EphyrMouseFuncs, &EphyrKeyboardFuncs); 
+      } 
+EphyrMouseFuncs，EphyrKeyboardFuncs定义在ephyr.c中： 
+      KdMouseFuncs EphyrMouseFuncs = { 
+          MouseInit, 
+          MouseFini, 
+      }; 
+      KdKeyboardFuncs EphyrKeyboardFuncs = { 
+          EphyrKeyboardLoad, 
+          EphyrKeyboardInit, 
+          EphyrKeyboardLeds, 
+          EphyrKeyboardBell, 
+          EphyrKeyboardFini, 
+          0, 
+      }; 
+除了EphyrKeyboardLoad(), 其他的函数只提供空实现： 
+      static void 
+      EphyrKeyboardLoad (void) 
+      { 
+          EPHYR_DBG("mark"); 
+          hostx_load_keymap(); 
+      } 
+hostx_load_keymap()定义在hostx.c中，对它的分析待补充 2 。 
+   2 依赖于X  Lib这部分的讨论 
+                                         17 
+  
